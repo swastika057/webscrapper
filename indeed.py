@@ -1,50 +1,89 @@
 from selenium import webdriver
 from selenium.webdriver.common.by import By
-import time
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+from selenium.common.exceptions import WebDriverException
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 
-# Open a Chrome browser window controlled by Selenium
-driver = webdriver.Chrome()
 
-# Go to the Indeed UK jobs page for London
-driver.get("https://uk.indeed.com/jobs?l=london")
+# Set your local chromedriver path
+DRIVER_PATH = r'c:\Users\S chhetri\Downloads\chromedriver\chromedriver.exe'
 
-# Wait for 15 seconds to make sure the page loads completely
-time.sleep(15)
 
-# Find all job titles on the page by looking for elements with class 'jobTitle'
-job_titles = driver.find_elements(By.CLASS_NAME, 'jobTitle')
+def init_driver(driver_path=DRIVER_PATH, headless=True):
+    options = Options()
+    options.headless = headless
+    options.add_argument("--window-size=1920,1200")
 
-# Find all company names by class 'css-1hlukg'
-company_name = driver.find_elements(By.CLASS_NAME, 'css-1hlukg')
+    service = Service(driver_path)
 
-# Find all company locations by class 'css-1restlb'
-company_locations = driver.find_elements(By.CLASS_NAME, 'css-1restlb')
-
-# Find all job URLs by locating <a> tags inside <h2> with class starting with 'jobTitle'
-urls = driver.find_elements(By.XPATH, '//h2[starts-with(@class,"jobTitle")]/a')
-
-# Loop through all jobs by pairing together job titles, companies, locations, and URLs
-for job_data in zip(job_titles, company_name, company_locations, urls):
-    print("--------------------")
     try:
-        # Extract text from job title element
-        job_name = job_data[0].text
+        return webdriver.Chrome(service=service, options=options)
+    except WebDriverException as e:
+        print("Error initializing WebDriver:", e)
+        return None
 
-        # Extract text from company name element
-        company_name = job_data[1].text
 
-        # Extract text from company location element
-        company_location = job_data[2].text
+def fetch_job_elements(driver):
+    print("Fetching job listings from Indeed UK...")
+    driver.get("https://uk.indeed.com/jobs?q=python%20developer&l=london%22")
 
-        # Get the URL from the 'href' attribute of the <a> tag
-        url = job_data[3].get_attribute('href')
+    # Use WebDriverWait instead of time.sleep for reliability
+    WebDriverWait(driver, 15).until(
+        EC.presence_of_element_located((By.CLASS_NAME, 'jobTitle'))
+    )
 
-        # Print the job information
-        print(f"Job name: {job_name}")
-        print(f"Company: {company_name}")
-        print(f"Location: {company_location}")
-        print(f"URL: {url}")
+    return {
+        'titles': driver.find_elements(By.CLASS_NAME, 'jobTitle'),
+        # The following classes might change; use more stable locators if possible
+        'companies': driver.find_elements(By.CSS_SELECTOR, 'span.company_name'),
+        'locations': driver.find_elements(By.CSS_SELECTOR, 'div.text_location'),
+        'urls': driver.find_elements(By.XPATH, '//h2[contains(@class,"jobTitle")]/a')
+    }
 
-    except Exception as e:
-        # If something goes wrong, print the error message
-        print("Error extracting job data:", e)
+
+def extract_job_info(jobs):
+    job_list = []
+
+    for title_el, company_el, location_el, url_el in zip(
+        jobs['titles'], jobs['companies'], jobs['locations'], jobs['urls']
+    ):
+        try:
+            job = {
+                'title': title_el.text.strip(),
+                'company': company_el.text.strip(),
+                'location': location_el.text.strip(),
+                'url': url_el.get_attribute('href')
+            }
+            job_list.append(job)
+        except Exception as e:
+            print("Error extracting job data:", e)
+    return job_list
+
+
+def display_jobs(job_list):
+    for job in job_list:
+        print("--------------------")
+        print(f"Job name : {job['title']}")
+        print(f"Company  : {job['company']}")
+        print(f"Location : {job['location']}")
+        print(f"URL      : {job['url']}")
+
+
+def main():
+    # Set headless=False to see the browser
+    driver = init_driver(headless=False)
+    if not driver:
+        return
+
+    try:
+        jobs = fetch_job_elements(driver)
+        job_list = extract_job_info(jobs)
+        display_jobs(job_list)
+    finally:
+        driver.quit()
+
+
+if __name__ == "__main__":
+    main()
